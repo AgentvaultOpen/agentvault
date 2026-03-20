@@ -4,7 +4,9 @@
 
 ---
 
-AgentVault is a Bitcoin Cash CashTokens wallet library designed specifically for autonomous AI agents. It gives agents on-chain identity, token holdings, and payment capability — without human involvement at runtime. Agents can send BCH, hold and transfer fungible tokens, mint identity NFTs, and maintain a cryptographically verifiable audit trail of every action they take.
+AgentVault is a Bitcoin Cash CashTokens wallet library designed specifically for autonomous AI agents. It gives agents on-chain identity, token holdings, payment capability, and **on-chain messaging** — without human involvement at runtime. Agents can send BCH with embedded messages, issue and fulfill payment requests, read their inbox of incoming agent messages, sign messages to prove identity, hold and transfer fungible tokens, mint identity NFTs, and maintain a cryptographically verifiable audit trail of every action they take.
+
+The **Agent Payment Message Protocol (APMP)** is built in — a lightweight standard for embedding structured JSON messages in BCH transactions via OP_RETURN. Every payment can carry context. Every request can be read. Agents communicate *through* money.
 
 ---
 
@@ -29,6 +31,10 @@ AgentVault is a Bitcoin Cash CashTokens wallet library designed specifically for
 - 🔒 **UTXO locking** — in-memory lock table prevents `txn-mempool-conflict` on rapid successive sends
 - 📋 **Tamper-evident audit log** — append-only, SHA-256 hash-chained; every action recorded and verifiable
 - 🪪 **Agent identity NFTs** — mutable on-chain commitment anchoring an agent's persistent identity
+- 💬 **APMP v1 — Agent Payment Message Protocol** — embed structured JSON messages in any BCH transaction via OP_RETURN (`pay`, `request`, `receipt`, `ping`, `reject`)
+- 📬 **Agent Inbox** — scan incoming transactions and read APMP messages from other agents
+- 📨 **Payment requests** — send a payment request to another agent; their inbox picks it up automatically
+- ✍️ **Message signing & verification** — cryptographically prove agent identity without a transaction
 - 🐍 **Python library + CLI** — use as an importable module or from the terminal
 
 ---
@@ -124,6 +130,80 @@ txid = wallet.send_many([
 ], memo="agent-payout-batch-001")
 
 print("All recipients paid in one TX:", txid)
+```
+
+---
+
+### Send BCH with a message (APMP)
+
+Every payment can carry a structured message — permanently embedded on-chain via OP_RETURN.
+
+```python
+from agentvault import Wallet, APMPMessage
+
+wallet = Wallet.load("~/.agentvault")
+
+# Send payment with context
+msg = APMPMessage.pay(from_agent="atlas", msg="Q3 trading fee", ref="inv-2026-031")
+txid = wallet.send_with_message(
+    to_address="bitcoincash:qp9wmqtr...",
+    amount=0.001,
+    message=msg
+)
+print("Paid with message:", txid)
+```
+
+---
+
+### Request a payment from another agent
+
+```python
+# Send a payment request — the other agent's inbox picks it up
+txid = wallet.request_payment(
+    from_address="bitcoincash:qz9j8jkjj...",  # atlas's address
+    amount_bch=0.0005,
+    msg="Content generation fee",
+    ref="herald-inv-001"
+)
+print("Request sent:", txid)
+```
+
+---
+
+### Read your inbox
+
+```python
+# See what other agents have sent you
+messages = wallet.get_inbox(limit=10)
+
+for m in messages:
+    print(f"From: {m.from_address[:20]}...")
+    print(f"Amount: {m.amount_bch} BCH")
+    if m.apmp:
+        print(f"Type: {m.apmp.type}")
+        print(f"Message: {m.apmp.msg}")
+        print(f"Ref: {m.apmp.ref}")
+    print()
+```
+
+---
+
+### Sign and verify messages
+
+Prove agent identity cryptographically — no transaction required.
+
+```python
+# Sign
+sig = wallet.sign_message("I am Atlas. This is my authorization.")
+print("Signature:", sig)
+
+# Verify (anyone can verify)
+valid = wallet.verify_message(
+    address=wallet.address,
+    message="I am Atlas. This is my authorization.",
+    signature=sig
+)
+print("Valid:", valid)  # True
 ```
 
 ---
@@ -260,6 +340,56 @@ Every wallet action is written to an append-only, hash-chained log. Each entry r
 
 ---
 
+## Agent Payment Message Protocol (APMP)
+
+APMP is a lightweight open standard for agent-to-agent communication embedded in BCH transactions. Every payment becomes a message. Every message is permanent, public, and verifiable on-chain.
+
+### Message Schema
+
+Messages are compact JSON embedded in OP_RETURN (max 220 bytes):
+
+```json
+{
+  "v": 1,
+  "type": "pay",
+  "from": "atlas",
+  "ref": "inv-2026-031",
+  "msg": "Q3 trading fee",
+  "ts": 1742000000
+}
+```
+
+### Message Types
+
+| Type | Use Case |
+|---|---|
+| `pay` | Payment confirmation with context |
+| `request` | Payment request / invoice |
+| `receipt` | Acknowledgment of received payment |
+| `ping` | Liveness check or metadata broadcast |
+| `reject` | Decline a payment request |
+
+### How It Works
+
+1. Sending agent builds an `APMPMessage` and calls `send_with_message()`
+2. The message is JSON-encoded and embedded in the transaction's OP_RETURN output
+3. Receiving agent calls `get_inbox()` — incoming transactions are scanned and APMP data decoded
+4. The full message history is on-chain: public, permanent, no middleman
+
+### Genesis Transaction
+
+The first APMP transaction on mainnet BCH:
+
+```
+TXID: f730a16dc637fbca6ea2ed8d689411c313908c51d2f517fadfdc59cb722cde3d
+From: Erin (Chief of Staff)
+To:   Atlas
+Msg:  "First APMP payment - AgentVault genesis"
+Date: March 20, 2026
+```
+
+---
+
 ## Security
 
 - **Passphrase never stored on disk.** The keystore file contains only the AES-256-GCM encrypted mnemonic. The passphrase lives in `AV_PASSPHRASE` or is passed at runtime.
@@ -289,6 +419,7 @@ Every wallet action is written to an append-only, hash-chained log. Each entry r
 - ✅ CLI
 
 ### Phase 2 — Agent Infrastructure
+- 🔜 **APMP v2** — multi-chunk messages, reply threading, encrypted payloads
 - 🔜 **DEX integration** — CashScript bridge for on-chain swaps
 - 🔜 **Policy engine** — per-action spending limits, allowlists, approval hooks
 - 🔜 **REST API** — HTTP wrapper for agent-to-agent calls
