@@ -1,0 +1,63 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+.installed.cfg
+lib/
+lib64/
+
+# ── Virtual Environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ── Environment Variables (NEVER commit passphrases or API keys) ───────────────
+.env
+.env.*
+!.env.example
+
+# ── AgentVault Wallet Data ────────────────────────────────────────────────────
+# These files contain encrypted keys and sensitive operational data.
+# Each developer maintains their own wallet outside the repo.
+keystore.json
+*.keystore.json
+audit.log
+*.log
+nft_store.db
+
+# ── Wallet Directories ────────────────────────────────────────────────────────
+.agentvault/
+.agentvault-testnet/
+wallets/
+wallet-data/
+
+# ── Testing & Cache ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
