@@ -121,8 +121,9 @@ class EncryptedFileKeyStore(KeyStore):
         Returns:
             (keystore_instance, mnemonic_phrase)
 
-        SECURITY: The returned mnemonic MUST be stored safely by the caller.
-        It will not be retrievable from the keystore after this point.
+        NOTE: The mnemonic is encrypted and stored in the keystore permanently.
+        It can be retrieved at any time using reveal_mnemonic(passphrase).
+        Back it up to offline storage as a recovery option.
         """
         path = Path(keystore_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -167,6 +168,10 @@ class EncryptedFileKeyStore(KeyStore):
 
     def _load_seed(self) -> bytes:
         """Decrypt and return the BIP-39 seed bytes."""
+        return mnemonic_to_seed(self._decrypt_mnemonic())
+
+    def _decrypt_mnemonic(self) -> str:
+        """Decrypt and return the raw mnemonic phrase. Internal use."""
         data = json.loads(self._path.read_text())
         if data.get("version") != self.KEYSTORE_VERSION:
             raise ValueError(
@@ -179,7 +184,56 @@ class EncryptedFileKeyStore(KeyStore):
             raise ValueError(
                 "Keystore mnemonic is invalid — keystore may be corrupted."
             )
-        return mnemonic_to_seed(phrase)
+        return phrase
+
+    def reveal_mnemonic(self, passphrase: str) -> str:
+        """
+        Reveal the wallet's mnemonic phrase.
+
+        Requires passphrase authentication. The mnemonic is stored encrypted
+        in the keystore and is always recoverable with the correct passphrase.
+
+        Args:
+            passphrase: The wallet's encryption passphrase.
+
+        Returns:
+            The 12 or 24 word mnemonic phrase.
+
+        Raises:
+            ValueError: If passphrase is incorrect.
+        """
+        # Authenticate with provided passphrase (may differ from loaded passphrase
+        # if called from an external context)
+        data = json.loads(self._path.read_text())
+        encrypted_mnemonic = bytes.fromhex(data["encrypted_mnemonic"])
+        try:
+            phrase = decrypt_data(encrypted_mnemonic, passphrase).decode('utf-8')
+        except Exception:
+            raise ValueError("Incorrect passphrase.")
+        if not validate_mnemonic(phrase):
+            raise ValueError("Keystore mnemonic is invalid or corrupted.")
+        return phrase
+
+    def reveal_private_key(self, passphrase: str,
+                           account: int = 0, change: int = 0,
+                           index: int = 0, testnet: bool = False) -> str:
+        """
+        Reveal the WIF private key for a given derivation path.
+
+        Requires passphrase authentication.
+
+        Args:
+            passphrase: The wallet's encryption passphrase.
+            account, change, index: BIP44 derivation path components.
+            testnet: If True, return testnet key.
+
+        Returns:
+            WIF-encoded private key string.
+        """
+        # Re-authenticate
+        self.reveal_mnemonic(passphrase)  # raises ValueError if wrong passphrase
+        key = self.get_key(account, change, index, testnet)
+        return key.to_wif()
 
     def get_key(self, account: int = 0, change: int = 0,
                 index: int = 0, testnet: bool = False):

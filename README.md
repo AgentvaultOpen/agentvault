@@ -69,9 +69,10 @@ os.environ["AV_PASSPHRASE"] = "my-secure-passphrase"
 
 wallet, mnemonic = Wallet.create("~/.agentvault")
 
-# ⚠️  Save the mnemonic immediately — it is shown ONCE and never stored.
-print("BACK THIS UP:", mnemonic)
-print("Address:", wallet.address)
+# The mnemonic is stored encrypted in the keystore.
+# Back it up to offline storage for recovery purposes.
+print("Wallet address:", wallet.address)
+print("Back this up offline:", mnemonic)
 ```
 
 ---
@@ -267,6 +268,12 @@ agentvault send bitcoincash:qp... 0.001 bch
 agentvault send bitcoincash:qp... 10000 satoshi
 agentvault send bitcoincash:qp... 5.00 usd
 
+# Reveal seed phrase (always available)
+agentvault reveal-mnemonic
+
+# Reveal private key (WIF format for Electron Cash import)
+agentvault reveal-key
+
 # Mint an immutable NFT
 agentvault mint-nft --commitment deadbeef
 
@@ -390,19 +397,43 @@ Date: March 20, 2026
 
 ---
 
+## Key Management
+
+Your seed phrase is always accessible. AgentVault stores it encrypted in the keystore — you can retrieve it anytime with the correct passphrase.
+
+```python
+# Reveal seed phrase (works anytime, as many times as needed)
+mnemonic = wallet.reveal_mnemonic("my-passphrase")
+
+# Reveal private key (WIF format — import into Electron Cash)
+wif = wallet.reveal_private_key("my-passphrase")
+```
+
+From the CLI:
+```bash
+# Show seed phrase
+agentvault reveal-mnemonic
+
+# Show private key (WIF)
+agentvault reveal-key
+```
+
+Import into Electron Cash:
+- **Via seed phrase:** Wallet → New → Standard → I already have a seed
+- **Via private key:** Wallet → New → Import private keys → paste WIF
+
+---
+
 ## Security
 
 - **Passphrase never stored on disk.** The keystore file contains only the AES-256-GCM encrypted mnemonic. The passphrase lives in `AV_PASSPHRASE` or is passed at runtime.
-- **Mnemonic shown once.** `Wallet.create()` returns the mnemonic phrase a single time. It is not logged, cached, or re-derivable from the keystore without the passphrase.
+- **Seed phrase always recoverable.** The mnemonic is stored encrypted and can be retrieved anytime via `reveal_mnemonic(passphrase)`. It is never deleted.
 - **Key derivation is expensive by design.** PBKDF2-HMAC-SHA256 at 600,000 iterations makes brute-force passphrase attacks impractical.
 - **Keystore file permissions.** Created with `0o600` — owner read/write only. Protect the directory with appropriate filesystem permissions.
 - **UTXO locking is in-memory.** Locks do not persist across process restarts. On restart, all locks expire. This is intentional — confirmed transactions make locks unnecessary.
 - **Never log mnemonics.** The audit log records wallet fingerprints and transaction details, never seed phrases or private keys.
 
-> **Recommended backup strategy for mnemonics:**
-> 1. Store in 1Password (or equivalent password manager)
-> 2. Write on paper, store in a fireproof safe
-> 3. Never store unencrypted on any internet-connected device
+> **For agent deployments:** Store the passphrase in an environment variable or secrets manager (e.g., `.env.secrets`, HashiCorp Vault). The agent reads it at runtime to sign transactions. Back up the seed phrase to offline storage for human recovery if the machine is lost.
 
 ---
 

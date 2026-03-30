@@ -825,6 +825,61 @@ class Wallet:
         """Verify the integrity of the audit log. Returns (is_valid, error_msg)."""
         return self._audit.verify()
 
+    # ── Key Reveal ───────────────────────────────────────────────────────────
+
+    def reveal_mnemonic(self, passphrase: str) -> str:
+        """
+        Reveal the wallet's seed phrase.
+
+        The mnemonic is stored encrypted in the keystore and is always
+        recoverable with the correct passphrase. Use this to back up your
+        wallet to Electron Cash or any BIP39-compatible wallet.
+
+        Args:
+            passphrase: The wallet's encryption passphrase.
+
+        Returns:
+            The 12 or 24 word mnemonic phrase.
+
+        Raises:
+            ValueError: If passphrase is incorrect.
+        """
+        mnemonic = self._keystore.reveal_mnemonic(passphrase)
+        self._audit.log("reveal_mnemonic", {
+            "address": self.address,
+            "note": "mnemonic revealed by authenticated request",
+        })
+        return mnemonic
+
+    def reveal_private_key(self, passphrase: str,
+                           account: int = 0, change: int = 0,
+                           index: int = 0) -> str:
+        """
+        Reveal the WIF private key for a derivation path.
+
+        Useful for importing into Electron Cash or other wallets.
+        The primary key is at account=0, change=0, index=0.
+
+        Args:
+            passphrase: The wallet's encryption passphrase.
+            account, change, index: BIP44 derivation path (default: primary key).
+
+        Returns:
+            WIF-encoded private key string.
+
+        Raises:
+            ValueError: If passphrase is incorrect.
+        """
+        wif = self._keystore.reveal_private_key(
+            passphrase, account, change, index, self._testnet
+        )
+        self._audit.log("reveal_private_key", {
+            "address": self.address,
+            "path": f"m/44'/145'/{account}'/{change}/{index}",
+            "note": "private key revealed by authenticated request",
+        })
+        return wif
+
     # ── Info ──────────────────────────────────────────────────────────────────
 
     @property

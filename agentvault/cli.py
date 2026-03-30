@@ -10,6 +10,8 @@ Usage:
     agentvault address
     agentvault send <address> <amount> <currency>
     agentvault mint-nft --commitment <hex>
+    agentvault reveal-mnemonic
+    agentvault reveal-key
     agentvault audit log
     agentvault audit verify
 """
@@ -116,14 +118,16 @@ def init(ctx, import_mnemonic, words):
 
         if not import_mnemonic:
             click.echo("\n" + "═" * 60)
-            click.echo("🔑  YOUR MNEMONIC PHRASE — SHOWN ONCE, NEVER AGAIN")
+            click.echo("🔑  YOUR MNEMONIC PHRASE")
             click.echo("═" * 60)
             words_list = phrase.split()
             for i, word in enumerate(words_list, 1):
                 click.echo(f"  {i:2d}. {word}")
             click.echo("═" * 60)
-            click.echo("⚠️  Write this down NOW. Store in 1Password + physical backup.")
-            click.echo("    Anyone with this phrase has full access to this wallet.")
+            click.echo("✅ This phrase is stored encrypted in your keystore.")
+            click.echo("   Retrieve it anytime with: agentvault reveal-mnemonic")
+            click.echo("   Back it up to offline storage as a recovery option.")
+            click.echo("   Anyone with this phrase has full access to this wallet.")
             click.echo("═" * 60)
 
     except Exception as e:
@@ -273,6 +277,89 @@ def mint_nft(ctx, commitment, capability, recipient, text, yes):
         click.echo(f"   View: https://explorer.bitcoin.com/bch/tx/{txid}")
     except Exception as e:
         click.echo(f"❌  Mint failed: {e}", err=True)
+        sys.exit(1)
+
+
+# ── reveal-mnemonic ───────────────────────────────────────────────────────────
+
+@cli.command('reveal-mnemonic')
+@click.option('--passphrase', default=None, envvar='AV_PASSPHRASE',
+              help='Wallet passphrase (or set AV_PASSPHRASE)')
+@click.pass_context
+def reveal_mnemonic(ctx, passphrase):
+    """Reveal your wallet's seed phrase.
+
+    \b
+    The seed phrase is always stored encrypted in your keystore.
+    Use this to back up to Electron Cash or any BIP39-compatible wallet.
+
+    \b
+    Examples:
+        agentvault reveal-mnemonic
+        AV_PASSPHRASE=mypass agentvault reveal-mnemonic
+    """
+    wallet = _load_wallet(ctx)
+
+    if not passphrase:
+        passphrase = click.prompt("Enter wallet passphrase", hide_input=True)
+
+    try:
+        mnemonic = wallet.reveal_mnemonic(passphrase)
+        words_list = mnemonic.split()
+        click.echo("\n" + "═" * 60)
+        click.echo("🔑  SEED PHRASE")
+        click.echo("═" * 60)
+        for i, word in enumerate(words_list, 1):
+            click.echo(f"  {i:2d}. {word}")
+        click.echo("═" * 60)
+        click.echo(f"   {len(words_list)} words | BIP39 | Derivation: m/44'/145'/0'")
+        click.echo("   Import into Electron Cash: Wallet > New > I already have a seed")
+        click.echo("═" * 60)
+    except ValueError:
+        click.echo("❌  Incorrect passphrase.", err=True)
+        sys.exit(1)
+
+
+# ── reveal-key ────────────────────────────────────────────────────────────────
+
+@cli.command('reveal-key')
+@click.option('--passphrase', default=None, envvar='AV_PASSPHRASE',
+              help='Wallet passphrase (or set AV_PASSPHRASE)')
+@click.option('--account', default=0, show_default=True, help='BIP44 account index')
+@click.option('--change', default=0, show_default=True, help='BIP44 change index')
+@click.option('--index', default=0, show_default=True, help='BIP44 address index')
+@click.pass_context
+def reveal_key(ctx, passphrase, account, change, index):
+    """Reveal the private key (WIF) for a derivation path.
+
+    \b
+    The primary key is at account=0, change=0, index=0 (default).
+    Use this to import directly into Electron Cash via private key.
+
+    \b
+    Examples:
+        agentvault reveal-key
+        agentvault reveal-key --index 1
+    """
+    wallet = _load_wallet(ctx)
+
+    if not passphrase:
+        passphrase = click.prompt("Enter wallet passphrase", hide_input=True)
+
+    try:
+        wif = wallet.reveal_private_key(passphrase, account, change, index)
+        path = f"m/44'/145'/{account}'/{change}/{index}"
+        click.echo("\n" + "═" * 60)
+        click.echo("🔑  PRIVATE KEY (WIF)")
+        click.echo("═" * 60)
+        click.echo(f"   Path:    {path}")
+        click.echo(f"   Address: {wallet.address}")
+        click.echo(f"   WIF:     {wif}")
+        click.echo("═" * 60)
+        click.echo("   Import into Electron Cash: Wallet > New > Import private keys")
+        click.echo("═" * 60)
+    except ValueError:
+        click.echo("❌  Incorrect passphrase.", err=True)
         sys.exit(1)
 
 
